@@ -3162,12 +3162,12 @@ Warning
 <pre><code># A tibble: 6 × 4
   name                       id iconic_taxon_name iconic_taxon_id
   &lt;chr&gt;                   &lt;int&gt; &lt;chr&gt;                       &lt;int&gt;
-1 Aeolidia loui          498117 Mollusca                    47115
-2 Fusitriton oregonensis 448389 Mollusca                    47115
-3 Xylocopa fimbriata     502620 Insecta                     47158
-4 Elateridae              53248 Insecta                     47158
-5 Antiblemma sterope     544203 Insecta                     47158
-6 Araneae                 47118 Arachnida                   47119</code></pre>
+1 Coenobita compressus   196626 Animalia                        1
+2 Aeolidia loui          498117 Mollusca                    47115
+3 Fusitriton oregonensis 448389 Mollusca                    47115
+4 Xylocopa fimbriata     502620 Insecta                     47158
+5 Elateridae              53248 Insecta                     47158
+6 Antiblemma sterope     544203 Insecta                     47158</code></pre>
 </div>
 </div>
 </section>
@@ -3217,12 +3217,12 @@ Warning
 <pre><code># A tibble: 6 × 3
   iconic_taxon_name ott_context name                  
   &lt;chr&gt;             &lt;chr&gt;       &lt;chr&gt;                 
-1 Mollusca          Molluscs    Aeolidia loui         
-2 Mollusca          Molluscs    Fusitriton oregonensis
-3 Insecta           Insects     Xylocopa fimbriata    
-4 Insecta           Insects     Elateridae            
-5 Insecta           Insects     Antiblemma sterope    
-6 Arachnida         Arachnids   Araneae               </code></pre>
+1 Animalia          Animals     Coenobita compressus  
+2 Mollusca          Molluscs    Aeolidia loui         
+3 Mollusca          Molluscs    Fusitriton oregonensis
+4 Insecta           Insects     Xylocopa fimbriata    
+5 Insecta           Insects     Elateridae            
+6 Insecta           Insects     Antiblemma sterope    </code></pre>
 </div>
 </div>
 <p>… before actually asking for the info (beware: this may take a while. Getting the matched OTT IDs is fairly fast, but making sure each is valid and in the Open Tree can be slow).</p>
@@ -3264,14 +3264,14 @@ Warning
 <div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(ott_cleaned)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 6 × 3
-  unique_name            search_string           ott_id
-  &lt;chr&gt;                  &lt;chr&gt;                    &lt;int&gt;
-1 Aeolidia loui          aeolidia loui          7497801
-2 Fusitriton oregonensis fusitriton oregonensis  236899
-3 Nerita scabricosta     nerita scabricosta      415706
-4 Eulithidium            eulithidium            2918374
-5 Lottia                 lottia                  439203
-6 Tegula funebralis      tegula funebralis       267402</code></pre>
+  unique_name           search_string          ott_id
+  &lt;chr&gt;                 &lt;chr&gt;                   &lt;int&gt;
+1 Coenobita compressus  coenobita compressus   389508
+2 Oxidus gracilis       oxidus gracilis        995749
+3 Armadillidium vulgare armadillidium vulgare  776700
+4 Grapsus grapsus       grapsus grapsus         43251
+5 Metandrocarpa dura    metandrocarpa dura    3646779
+6 Romaleon antennarium  romaleon antennarium  2980468</code></pre>
 </div>
 </div>
 <div class="callout callout-style-default callout-warning callout-titled">
@@ -3284,7 +3284,7 @@ Taxons lost in processing
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>Not all names are successfully matched by <code>tnrs_match_names()</code>, some are matched but matches are low-quality and likely wrong, some are matched but the taxon is not in the synthetic tree and needs to be removed to avoid errors when generating our subtree. In this example, we still get 1236 OTT IDs out of 1453 unique names in the input, which is good enough for now.</p>
+<p>Not all names are successfully matched by <code>tnrs_match_names()</code>, some are matched but matches are low-quality and likely wrong, some are matched but the taxon is not in the synthetic tree and needs to be removed to avoid errors when generating our subtree. In this example, we still get 1236 OTT IDs out of 1454 unique names in the input, which is good enough for now.</p>
 <!-- note to self: 
 some of the mismatches are because a taxonomic lvl recognized in iNat doesn't have equivalent in OTOL backbone taxonomy.
 But iNat data include higher lvls of taxonomy. If we can extract them we could iterate the OTOL query as "if no match, try higher lvl"

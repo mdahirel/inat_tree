@@ -1,0 +1,284 @@
+---
+title: "A demo on how to make phylogenetic trees using iNaturalist observations"
+author: Maxime Dahirel
+date: today
+date-format: iso
+format: 
+  html: 
+    embed-resources: true
+    toc: true
+    code-fold: true
+theme: yeti
+execute:
+  message: false
+  output: false
+editor_options: 
+  chunk_output_type: console
+---
+
+Since 2023, I've been making phylogenetic trees following each [#InverteFest](http://www.metrofieldguide.com/invertefest/) event, using the observations from the corresponding [iNaturalist projects](https://www.inaturalist.org/search?q=invertefest&source%5B%5D=projects). Originally, I wrote some [ad hoc code](https://github.com/mdahirel/invertefest_tree) for one session that I then had to manually modify, fairly deeply, for each session, which is less than ideal. For the last session of 2024, I started to rework that code to make it more flexible, with an eye on adding more functionalities in the future.
+
+```{r load_packages}
+#| code-summary: "Code: load packages and custom functions"
+
+library(tidyverse) 
+library(assertthat)
+library(httr2)     
+library(ape)       
+library(rotl)      
+library(ggtree)    
+library(ggtext)    
+library(rphylopic) 
+library(showtext)    
+library(here)      
+
+source(here("R","get_inat.R"))
+```
+
+# Loading iNat observations
+
+The custom-made `get_inat` function[^1] uses the `httr2` package to query the iNat API, and then formats back the output in an R tidy manner. It can currently extract taxon names from a specific project, a specific user, or both. It will be possible to extract more than taxon names in the future, and to restrict to a target taxon.
+
+[^1]: see `R/get_inat.R` in code repository
+
+::: {.callout-warning}
+Note that the function currently enforces the recommended-by-iNat maximum of **10k results per request**. If a request would lead to more than 10000 results, only the 10000 more recent would be returned. I might later add ways to work around that (e.g. multiple requests stitched together) if I personally run into a use case that needs it (backup of my own iNat obs, for instance, but that's currently way under 10k).
+:::
+
+```{r get_inat_info}
+#| code-summary: "Code: query API to get iNat results"
+#| output: true
+inat_names <- get_inat(project_id="invertefest-december-2024")
+```
+
+```{r head_inat_info}
+#| code-fold: false
+#| output: true
+head(inat_names)
+```
+
+# Generating tree data from the Open Tree of Life
+
+Now that we have our taxon names, we are going to use the [`rotl`](https://docs.ropensci.org/rotl/) package to interact with the [Open Tree of Life](http://opentreeoflife.org/):  
+- to get Open Tree Taxonomy IDs from our taxon names  
+- then to get a subtree of the Open Tree of Life from these IDs  
+
+But first: because different areas in the Tree of Life are regulated by different taxonomic codes, a same name can be perfectly valid for e.g. a plant and an animal at the same time. To limit the risk of ambiguous matches, OTOL allows you to attempt to match a name only within a specific subset of the Tree of Life, or "context" (e.g. only animals). 
+
+So we first use the "iconic taxon" data of iNat to help `rotl` knows which context matches each name...
+
+```{r get_context}
+#| code-summary: "Code: get name context"
+inat_context <- inat_names |> 
+  mutate(
+    ott_context = case_when(
+      iconic_taxon_name=="Animalia"~"Animals", # careful: this iconic name is all animals *except* the ones under an other iconic name already
+      iconic_taxon_name=="Amphibia"~"Amphibians",
+      iconic_taxon_name=="Aves"~"Birds",
+      iconic_taxon_name=="Mammalia"~"Mammals",
+      iconic_taxon_name=="Reptilia"~"Tetrapods",
+      iconic_taxon_name=="Actinopterygii"~"Vertebrates",
+      
+      iconic_taxon_name=="Insecta"~"Insects", # use arthropod context to be safe re: trt of entognaths? tbd
+      iconic_taxon_name=="Arachnida"~"Arachnids",
+      
+      iconic_taxon_name=="Mollusca"~"Molluscs",
+      
+      iconic_taxon_name=="Chromista"~"All life",
+      
+      iconic_taxon_name=="Protozoa"~"All life",
+      
+      iconic_taxon_name=="Fungi"~"Fungi", # all life context to be safe re: lichens? check and tbd
+      
+      iconic_taxon_name=="Plantae"~"Land plants",
+      
+      iconic_taxon_name=="unknown"~"All life",
+      TRUE~"All life")
+  ) |> 
+  select(iconic_taxon_name,ott_context,name) |> 
+  distinct() # no need for duplicates
+```
+
+
+```{r head_context}
+#| code-fold: false
+#| output: true
+head(inat_context)
+```
+
+... before actually asking for the info (beware: this may take a while. Getting the matched OTT IDs is fairly fast, but making sure each is valid and in the Open Tree can be slow).
+
+```{r get_ott_ids}
+#| code-summary: "Code: get OTT IDs"
+#| output: true
+inat_ott <- inat_context |> 
+  group_by(ott_context) |> 
+  nest() |> 
+  mutate(
+    resolved_names=map2(
+      .x=data,
+      .y=ott_context,
+      .f=function(.x,.y){
+        tnrs_match_names(.x$name,context_name=.y) |> 
+          filter(!is.na(ott_id)) |> 
+          mutate(in_tree=is_in_tree(ott_id))
+        }
+      )
+    ) |> 
+# takes a while:
+# simply filtering out flags likely to signal "not in tree" status (eg incertae sedis) would work faster, but may be more approximate/trial-and-error:
+   mutate(filtered_names = map(
+     .x = resolved_names,
+     .f= ~.x |>
+       filter(in_tree==TRUE & score > 0.9) # can adjust score
+   )
+   )
+
+ott_cleaned <- inat_ott |> 
+  ungroup() |> 
+  select(filtered_names) |> 
+  unnest(filtered_names) |> 
+  select(unique_name,search_string,ott_id) |> 
+  distinct()
+```
+
+
+```{r head_ott_ids}
+#| code-fold: false
+#| output: true
+head(ott_cleaned)
+```
+
+::: {.callout-warning}
+## Taxons lost in processing
+
+Not all names are successfully matched by `tnrs_match_names()`, some are matched but matches are low-quality and likely wrong, some are matched but the taxon is not in the synthetic tree and needs to be removed to avoid errors when generating our subtree. In this example, we still get `r length(unique(ott_cleaned$ott_id))` OTT IDs out of `r length(unique(inat_names$name))` unique names in the input, which is good enough for now.
+
+<!-- note to self: 
+some of the mismatches are because a taxonomic lvl recognized in iNat doesn't have equivalent in OTOL backbone taxonomy.
+But iNat data include higher lvls of taxonomy. If we can extract them we could iterate the OTOL query as "if no match, try higher lvl"
+-->
+:::
+
+```{r get_subtree}
+#| code-summary: "Code: get the tree from OTOL"
+tol_induced_subtree(
+  ott_ids = unique(ott_cleaned$ott_id),
+  label_format = "name", file = here("tree_data", "tree.newick")
+)
+
+my_tree <- ape::read.tree(here("tree_data", "tree.newick"))
+```
+
+We save the tree in Newick format to `file`, and then reimport it immediately. We actually don't need to do that to get the tree, we could directly get the tree as a `phylo` object, by letting the `file` argument empty. But doing that tends to collapse a lot of internal nodes[^2] (which contains the clade names), and these can be very useful to annotate the tree.
+
+[^2]: It will collapse an internal node if there is no branching there. For instance, if all your insects in the tree are Pterygota (no never-winged insects such as silverfish, for instance), then the Insecta node would be removed since there would be no branching at that node, which is bad if you have downstream annotations explicitly relying on "Insecta".
+
+# Plotting the tree
+
+We use the [`ggtree`](https://github.com/YuLab-SMU/ggtree) package to plot and annotate the tree. We can use many types of annotations. We're going to combine colour highlighting of major clades and [PhyloPic](https://www.phylopic.org/) images of some iconic groups, courtesy of the [`rphylopic`](https://rphylopic.palaeoverse.org/) package. We also make sure that the silhouettes are properly credited on the plot.
+
+```{r annotations}
+#| code-summary: "Code: prepare tree annotations"
+d1 <- data.frame(
+  node = c(
+    length(my_tree$tip.label) + which(my_tree$node.label == "Insecta"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Malacostraca"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Araneae"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Mollusca"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Myriapoda")
+  ),
+  taxon = c("Insects", "Malacostracans","Spiders", "Molluscs", "Myriapods")
+)
+
+
+d2 <- data.frame(
+  node = c(
+    length(my_tree$tip.label) + which(my_tree$node.label == "Diptera"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Hymenoptera"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Coleoptera"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Lepidoptera"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Orthoptera"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Araneae"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Gastropoda"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Odonata"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Hemiptera"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Myriapoda")
+  ),
+  taxon = c(
+    "Diptera", "Hymenoptera", "Coleoptera", "Lepidoptera",
+    "Orthoptera", "Araneae", "Gastropoda", "Odonata", "Hemiptera", "Myriapoda"
+  ),
+  image = c(
+    get_uuid(name = "Drosophila americana", n = 1),
+    get_uuid(name = "Vespula", n = 1),
+    get_uuid(name = "Carabus", n = 1),
+    get_uuid(name = "Papilio", n = 1),
+    get_uuid(name = "Acrididae", n = 1),
+    get_uuid(name = "Araneus", n = 1),
+    get_uuid(name = "Helix aspersa", n = 1),
+    get_uuid(name = "Sympetrum", n = 1),
+    get_uuid(name = "Lycorma delicatula", n = 1),
+    get_uuid(name = "Lithobius forficatus", n = 1)
+  )
+) |> 
+  mutate(contributor = map(.x=image,.f=~.x |> get_attribution() |> pluck("images",.x,"attribution")),
+         license = map(.x=image,.f=~.x |> get_attribution() |> pluck("images",.x,"license_abbr"))
+  ) |> 
+  mutate(attr = paste0(taxon,": ", contributor, " (", license,")")) |> 
+  arrange(taxon)
+
+phylopic_credit <- paste0("Animal silhouettes are from **phylopic.org**. ",paste(d2$attr,collapse="; "),".")
+
+figure_author <- "Data visualisation by **Maxime Dahirel**, underlying code: **github.com/mdahirel/inat_tree**"
+
+#(tips are counted as nodes for `ggtree` purposes, that's why we add the number of tips to get the correct node values)
+```
+
+
+```{r tree, dev='cairo_pdf'}
+#| code-summary: "Code: create the tree"
+#| output: true
+#| fig-width: 8
+#| fig-height: 8
+
+font_add_google(name="Open Sans",family="Open Sans")
+font_add_google(name="Ubuntu",family="Ubuntu")
+
+showtext_auto()
+
+tree_line_width <- 0.35
+
+p <- ggtree(my_tree, layout = "circular", size=tree_line_width) +
+  geom_highlight(data = d1, aes(node = node, fill = taxon)) +
+  geom_tree(size=tree_line_width) +
+  geom_cladelab(
+    data = d2,
+    mapping = aes(node = node, label = taxon, image = image), imagesize = 0.1,
+    geom = "phylopic", imagecolour = "black", offset = 1, offset.text = 10, alpha = 1
+  ) +
+  scale_fill_brewer(name= "**Highlighted taxa**",palette = "Dark2") + 
+  labs(
+    title="**#InverteFest! December 2024!!**",
+    subtitle="A phylogenetic tree based on **iNaturalist** data",
+    caption = paste0(figure_author,"<br/><br/>",phylopic_credit)
+  )+
+  theme(text=element_text(family = "Ubuntu", size = 12),
+        plot.title=element_markdown(family = "Open Sans", size = 18),
+        plot.subtitle=element_markdown(family = "Ubuntu"),
+        legend.title=element_markdown(family = "Ubuntu"),
+        legend.justification = "right",
+        plot.caption = element_textbox_simple(family = "Ubuntu",size=8, halign=1),
+        plot.caption.position = "plot"
+        )
+
+ggsave(here("tree_plots","tree.pdf"), plot = p, device=cairo_pdf)
+
+showtext_opts(dpi = 300)
+ggsave(here("tree_plots","tree.png"), plot = p)
+knitr::include_graphics(here("tree_plots","tree.png"))
+```
+
+::: {.callout-note}
+In some cases, you may notice that there are fewer tips in the tree than we have "valid" OTT IDs (here: `r length(my_tree$tip.label)` vs `r length(unique(ott_cleaned$ott_id))`). This is because higher-level IDs will end up as internal nodes if there exists another observation from the same taxon but with a more precise ID (for instance, for a set of two observations, one identified as *Cepaea* sp. and one as *Cepaea nemoralis*, we would end up with only one tip in the tree, *Cepaea nemoralis*, with *Cepaea* as an internal node).
+:::

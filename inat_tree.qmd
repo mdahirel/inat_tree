@@ -48,7 +48,7 @@ Note that the function currently enforces the recommended-by-iNat maximum of **1
 ```{r get_inat_info}
 #| code-summary: "Code: query API to get iNat results"
 #| output: true
-inat_names <- get_inat(project_id="invertefest-december-2024")
+inat_names <- get_inat(project_id="invertefest-april-2025")
 ```
 
 ```{r head_inat_info}
@@ -203,11 +203,12 @@ d2 <- data.frame(
     length(my_tree$tip.label) + which(my_tree$node.label == "Gastropoda"),
     length(my_tree$tip.label) + which(my_tree$node.label == "Odonata"),
     length(my_tree$tip.label) + which(my_tree$node.label == "Hemiptera"),
-    length(my_tree$tip.label) + which(my_tree$node.label == "Myriapoda")
+    length(my_tree$tip.label) + which(my_tree$node.label == "Myriapoda"),
+    length(my_tree$tip.label) + which(my_tree$node.label == "Cnidaria")
   ),
   taxon = c(
     "Diptera", "Hymenoptera", "Coleoptera", "Lepidoptera",
-    "Orthoptera", "Araneae", "Gastropoda", "Odonata", "Hemiptera", "Myriapoda"
+    "Orthoptera", "Araneae", "Gastropoda", "Odonata", "Hemiptera", "Myriapoda","Cnidaria"
   ),
   image = c(
     get_uuid(name = "Drosophila americana", n = 1),
@@ -219,7 +220,8 @@ d2 <- data.frame(
     get_uuid(name = "Helix aspersa", n = 1),
     get_uuid(name = "Sympetrum", n = 1),
     get_uuid(name = "Lycorma delicatula", n = 1),
-    get_uuid(name = "Lithobius forficatus", n = 1)
+    get_uuid(name = "Lithobius forficatus", n = 1),
+    get_uuid(name = "Actinia equina", n = 1)
   )
 ) |> 
   mutate(contributor = map(.x=image,.f=~.x |> get_attribution() |> pluck("images",.x,"attribution")),
@@ -239,8 +241,8 @@ figure_author <- "Data visualisation by **Maxime Dahirel**, underlying code: **g
 ```{r tree, dev='cairo_pdf'}
 #| code-summary: "Code: create the tree"
 #| output: true
-#| fig-width: 8
-#| fig-height: 8
+#| fig-width: 10
+#| fig-height: 10
 
 font_add_google(name="Open Sans",family="Open Sans")
 font_add_google(name="Ubuntu",family="Ubuntu")
@@ -259,7 +261,7 @@ p <- ggtree(my_tree, layout = "circular", size=tree_line_width) +
   ) +
   scale_fill_brewer(name= "**Highlighted taxa**",palette = "Dark2") + 
   labs(
-    title="**#InverteFest! December 2024!!**",
+    title="**#InverteFest! April 2025!!**",
     subtitle="A phylogenetic tree based on **iNaturalist** data",
     caption = paste0(figure_author,"<br/><br/>",phylopic_credit)
   )+

@@ -249,7 +249,7 @@ font_add_google(name="Ubuntu",family="Ubuntu")
 
 showtext_auto()
 
-tree_line_width <- 0.35
+tree_line_width <- 0.15
 
 p <- ggtree(my_tree, layout = "circular", size=tree_line_width) +
   geom_highlight(data = d1, aes(node = node, fill = taxon)) +
@@ -270,7 +270,7 @@ p <- ggtree(my_tree, layout = "circular", size=tree_line_width) +
         plot.subtitle=element_markdown(family = "Ubuntu"),
         legend.title=element_markdown(family = "Ubuntu"),
         legend.justification = "right",
-        plot.caption = element_textbox_simple(family = "Ubuntu",size=8, halign=1),
+        plot.caption = element_textbox_simple(family = "Ubuntu",size=6, halign=1),
         plot.caption.position = "plot"
         )
 
